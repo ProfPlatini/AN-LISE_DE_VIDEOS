@@ -1,0 +1,4 @@
+.env
+audio.wav
+ffmpeg.exe
+__pycache__/

@@ -1,0 +1,3 @@
+pytubefix
+ffmpeg-python
+openai
