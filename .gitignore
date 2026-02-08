@@ -1,4 +1,6 @@
 .env
+.venv/
+.venv
 audio.wav
 ffmpeg.exe
 __pycache__/

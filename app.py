@@ -1,54 +1,69 @@
 import pytubefix
 import ffmpeg
 import sys
+import os
 from dotenv import load_dotenv
 from openai import OpenAI
-import os
 
-# 1. Configuração Inicial
-client = OpenAI
+# ==========================================================
+# 1. CONFIGURAÇÃO INICIAL (A ORDEM IMPORTA!)
+# ==========================================================
+
+# 1º Passo: Carrega o arquivo .env
+load_dotenv() 
+
+# 2º Passo: Pega a chave que agora já está na memória
 api_key = os.getenv("OPENAI_API_KEY")
+
+# 3º Passo: Verifica se a chave foi encontrada
 if not api_key:
-    print ("API KEY não encontrada, verifique se o arquivo .env existe e se a chave está escrita corretamente!")
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-load_dotenv() # Isso carrega as variáveis do arquivo .env
-url = sys.argv[1] # Recebe o link via terminal
+    print("❌ ERRO: OPENAI_API_KEY não encontrada no arquivo .env!")
+    print("Verifique se o arquivo .env está salvo corretamente.")
+    sys.exit()
+
+# 4º Passo: Inicializa o cliente com a chave válida
+client = OpenAI(api_key=api_key)
+
+# 5º Passo: Valida o link do terminal
+if len(sys.argv) < 2:
+    print("❌ Erro: Forneça o link do YouTube.")
+    print('Exemplo: python app.py "https://www.youtube.com/..."')
+    sys.exit()
+
+url = sys.argv[1]
 filename = "audio.wav"
 
+# ==========================================================
+# 2. EXTRAÇÃO E PROCESSAMENTO
+# ==========================================================
 
+print("1/4 - Baixando áudio...")
+try:
+    yt = pytubefix.YouTube(url)
+    stream = yt.streams.get_audio_only().url
+    ffmpeg.input(stream).output(filename, format='wav', loglevel="error").run(overwrite_output=True)
+except Exception as e:
+    print(f"❌ Erro no download/ffmpeg: {e}")
+    sys.exit()
 
-# 2. Extração do Áudio
-print("Baixando áudio...")
-yt = pytubefix.YouTube(url)
-stream = yt.streams[0].url # Pega o endereço do fluxo de dados
-ffmpeg.input(stream).output(filename, format='wav', loglevel="error").run(overwrite_output=True)
+print("2/4 - Transcrevendo (Whisper)...")
+with open(filename, "rb") as audio_file:
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=audio_file
+    ).text
 
-# 3. Transcrição (Whisper)
-print("Transcrevendo...")
-audio_file = open(filename, "rb") # Abre o áudio em modo binário
-transcript = client.audio.transcriptions.create(
-    model="whisper-1",
-    file=audio_file
-).text
-
-# 4. Resumo e Análise (GPT-4o-mini)
-print("Analisando com I.A...")
+print("3/4 - Resumindo (GPT-4o-mini)...")
 completion = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[
-        {
-            "role": "system", 
-            "content": "Você é um assistente que resume vídeos detalhadamente. Responda com formatação Markdown."
-        },
-        {
-            "role": "user", 
-            "content": f"Descreva o seguinte vídeo: {transcript}"
-        }
+        {"role": "system", "content": "Você resume vídeos em Markdown."},
+        {"role": "user", "content": f"Resuma o seguinte conteúdo: {transcript}"}
     ]
 )
 
-# 5. Salvando o Resultado
+print("4/4 - Salvando resultado...")
 with open("resumo.md", "w+", encoding="utf-8") as md:
     md.write(completion.choices[0].message.content)
 
-print("Sucesso! O resumo foi salvo em 'resumo.md'.")
+print("\n✅ Concluído! Verifique o arquivo 'resumo.md'.")
